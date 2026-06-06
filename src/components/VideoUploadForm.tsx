@@ -53,20 +53,22 @@ export default function VideoUploadForm({ order }: { order: Order }) {
         }
       });
 
-      const result = await new Promise<{ success: boolean; data?: { video_url: string }; error?: string }>(
-        (resolve, reject) => {
-          xhr.addEventListener('load', () => {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch {
-              reject(new Error('Invalid server response'));
-            }
-          });
-          xhr.addEventListener('error', () => reject(new Error('Network error')));
-          xhr.open('POST', '/api/upload-video');
-          xhr.send(formData);
-        }
-      );
+      const result = await new Promise<{
+        success: boolean;
+        data?: { video_url: string };
+        error?: string;
+      }>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error('Invalid server response'));
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Network error')));
+        xhr.open('POST', '/api/upload-video');
+        xhr.send(formData);
+      });
 
       if (!result.success) {
         setError(result.error ?? 'Upload failed');
@@ -85,11 +87,12 @@ export default function VideoUploadForm({ order }: { order: Order }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
       <h2 className="text-base font-semibold text-gray-900 mb-4">Gift Video</h2>
 
       {uploadedUrl ? (
         <div className="space-y-4">
+          {/* Video player */}
           <video
             src={uploadedUrl}
             controls
@@ -98,47 +101,69 @@ export default function VideoUploadForm({ order }: { order: Order }) {
             style={{ maxHeight: '320px' }}
           />
           <p className="text-xs text-gray-400">Video uploaded successfully.</p>
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-sm text-gray-600 mb-3">Replace video</p>
-            <div className="flex flex-col sm:flex-row gap-3">
+
+          {/* Replace section */}
+          <div className="border-t border-gray-100 pt-4 space-y-3">
+            <p className="text-sm text-gray-600 font-medium">Replace video</p>
+            <label className="block w-full cursor-pointer">
+              <div className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-600 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors text-center">
+                Choose video file
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="video/*"
                 onChange={handleFileChange}
-                className="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                className="sr-only"
               />
-              {selectedFile && (
+            </label>
+
+            {selectedFile && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1 bg-gray-50 rounded-lg px-3 py-2">
+                  <p className="text-sm font-medium text-gray-800 truncate">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB
+                  </p>
+                </div>
                 <button
                   onClick={handleUpload}
                   disabled={uploading}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 active:bg-indigo-800 transition-colors"
                 >
                   {uploading ? 'Uploading...' : 'Replace'}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Drop zone */}
           <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center">
             <div className="text-4xl mb-3">🎬</div>
             <p className="text-sm text-gray-500 mb-1">Select a video to upload</p>
             <p className="text-xs text-gray-400">MP4, MOV, WebM — up to {MAX_SIZE_MB} MB</p>
           </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleFileChange}
-            className="text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 w-full"
-          />
+          {/* Custom file button */}
+          <label className="block w-full cursor-pointer">
+            <div className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-600 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors text-center">
+              Choose video file
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleFileChange}
+              className="sr-only"
+            />
+          </label>
 
+          {/* Selected file info + upload button */}
           {selectedFile && (
-            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
-              <div className="min-w-0">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1 bg-gray-50 rounded-lg px-3 py-2">
                 <p className="text-sm font-medium text-gray-800 truncate">{selectedFile.name}</p>
                 <p className="text-xs text-gray-400">
                   {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB
@@ -147,19 +172,20 @@ export default function VideoUploadForm({ order }: { order: Order }) {
               <button
                 onClick={handleUpload}
                 disabled={uploading}
-                className="ml-4 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 active:bg-indigo-800 transition-colors"
               >
-                {uploading ? 'Uploading...' : 'Upload'}
+                {uploading ? 'Uploading...' : 'Upload Video'}
               </button>
             </div>
           )}
         </div>
       )}
 
+      {/* Progress bar */}
       {uploading && (
         <div className="mt-4">
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Uploading...</span>
+          <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+            <span>Uploading to Cloudinary…</span>
             <span>{progress}%</span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2">
@@ -171,6 +197,7 @@ export default function VideoUploadForm({ order }: { order: Order }) {
         </div>
       )}
 
+      {/* Error */}
       {error && (
         <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           <p className="text-sm text-red-700">{error}</p>

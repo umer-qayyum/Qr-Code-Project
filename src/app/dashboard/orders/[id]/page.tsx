@@ -51,31 +51,44 @@ export default async function OrderDetailPage({ params }: PageProps) {
     minute: '2-digit',
   });
 
+  const shortId = order.id.slice(0, 8).toUpperCase();
+
   return (
     <main className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8">
+
+        {/* Back link */}
         <Link
           href="/dashboard"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-5 transition-colors"
         >
           ← Back to Dashboard
         </Link>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">{order.customer_name}</h1>
-              {order.customer_note && (
-                <p className="mt-1 text-sm text-gray-600 italic">"{order.customer_note}"</p>
-              )}
-            </div>
+        {/* Order info card */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 mb-5">
+          {/* Name + badge: wraps on narrow screens */}
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug">
+              {order.customer_name}
+            </h1>
             <StatusBadge status={order.status} />
           </div>
-          <p className="text-xs text-gray-400">Created {formattedDate}</p>
-          <p className="text-xs text-gray-400 mt-1">Order ID: {order.id}</p>
+
+          {order.customer_note && (
+            <p className="text-sm text-gray-600 italic mb-3 leading-relaxed">
+              &ldquo;{order.customer_note}&rdquo;
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <p className="text-xs text-gray-400">Created {formattedDate}</p>
+            <p className="text-xs text-gray-400 font-mono">#{shortId}…</p>
+          </div>
         </div>
 
-        <div className="space-y-6">
+        {/* Video + QR sections */}
+        <div className="space-y-5">
           <VideoUploadForm order={order} />
           <QRCodeDisplay order={order} />
         </div>

@@ -47,35 +47,37 @@ export default function QRCodeDisplay({ order }: { order: Order }) {
 
   const handlePrint = () => {
     if (!qrUrl) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>QR Code — ${order.customer_name}</title>
-          <style>
-            body { font-family: sans-serif; text-align: center; padding: 40px; }
-            img { width: 300px; height: 300px; display: block; margin: 0 auto 20px; }
-            h2 { margin: 0 0 8px; font-size: 18px; }
-            p { color: #666; font-size: 14px; margin: 0; }
-          </style>
-        </head>
-        <body>
-          <img src="${qrUrl}" alt="QR Code" />
-          <h2>${order.customer_name}</h2>
-          ${order.customer_note ? `<p>${order.customer_note}</p>` : ''}
-          <script>window.onload = () => { window.print(); window.close(); }<\/script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    const note = order.customer_note
+      ? `<p>${order.customer_note.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+      : '';
+
+    const html = [
+      '<!DOCTYPE html><html><head>',
+      `<title>QR Code — ${order.customer_name}</title>`,
+      '<style>',
+      'body{font-family:sans-serif;text-align:center;padding:40px;}',
+      'img{width:300px;height:300px;display:block;margin:0 auto 20px;}',
+      'h2{margin:0 0 8px;font-size:18px;}p{color:#666;font-size:14px;margin:0;}',
+      '</style></head><body>',
+      `<img src="${qrUrl}" alt="QR Code" />`,
+      `<h2>${order.customer_name}</h2>`,
+      note,
+      '<script>window.onload=function(){window.print();window.close();}<\/script>',
+      '</body></html>',
+    ].join('');
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+    if (printWindow) {
+      printWindow.addEventListener('afterprint', () => URL.revokeObjectURL(url));
+    }
   };
 
   if (!order.video_url && !qrUrl) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-2">QR Code</h2>
         <p className="text-sm text-gray-400">Upload a video first to generate the QR code.</p>
       </div>
@@ -83,41 +85,47 @@ export default function QRCodeDisplay({ order }: { order: Order }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
       <h2 className="text-base font-semibold text-gray-900 mb-4">QR Code</h2>
 
       {qrUrl ? (
         <div className="space-y-4">
+          {/* Responsive QR image — caps at 280px, fills width on small screens */}
           <div className="flex justify-center">
-            <Image
-              src={qrUrl}
-              alt="QR Code"
-              width={280}
-              height={280}
-              className="rounded-xl border border-gray-100"
-              unoptimized
-            />
+            <div className="w-full max-w-[280px]">
+              <Image
+                src={qrUrl}
+                alt="QR Code"
+                width={280}
+                height={280}
+                className="w-full h-auto rounded-xl border border-gray-100"
+                unoptimized
+              />
+            </div>
           </div>
-          <div className="flex gap-3">
+
+          {/* Action buttons */}
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button
               onClick={handleDownload}
-              className="flex-1 bg-gray-100 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              className="flex-1 bg-gray-100 text-gray-800 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-200 active:bg-gray-300 transition-colors"
             >
               Download PNG
             </button>
             <button
               onClick={handlePrint}
-              className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              className="flex-1 bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
             >
               Print QR
             </button>
           </div>
+
           <button
             onClick={handleGenerateQr}
             disabled={generating}
-            className="w-full border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className="w-full border border-gray-200 text-gray-600 px-4 py-2.5 rounded-lg text-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
           >
-            {generating ? 'Regenerating...' : 'Regenerate QR Code'}
+            {generating ? 'Regenerating…' : 'Regenerate QR Code'}
           </button>
         </div>
       ) : (
@@ -132,9 +140,9 @@ export default function QRCodeDisplay({ order }: { order: Order }) {
           <button
             onClick={handleGenerateQr}
             disabled={generating}
-            className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 transition-colors"
           >
-            {generating ? 'Generating...' : 'Generate QR Code'}
+            {generating ? 'Generating…' : 'Generate QR Code'}
           </button>
         </div>
       )}
