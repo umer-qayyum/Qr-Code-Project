@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServerClient } from '@/lib/supabase/server';
+import { deleteCloudinaryAsset } from '@/lib/cloudinary';
 import { Order, UpdateOrderInput } from '@/lib/types';
 
 interface RouteContext {
@@ -53,6 +54,47 @@ export async function PATCH(
     }
 
     return NextResponse.json({ success: true, data: data as Order });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: RouteContext
+): Promise<NextResponse> {
+  try {
+    // Fetch URLs first so we can clean up Cloudinary after DB deletion
+    const { data: order, error: fetchError } = await supabaseServerClient
+      .from('orders')
+      .select('video_url, qr_code_url')
+      .eq('id', params.id)
+      .single();
+
+    if (fetchError || !order) {
+      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+    }
+
+    const { error: deleteError } = await supabaseServerClient
+      .from('orders')
+      .delete()
+      .eq('id', params.id);
+
+    if (deleteError) {
+      return NextResponse.json({ success: false, error: deleteError.message }, { status: 500 });
+    }
+
+    // Best-effort Cloudinary cleanup — run after DB delete succeeds
+    const typedOrder = order as Pick<Order, 'video_url' | 'qr_code_url'>;
+    if (typedOrder.video_url) {
+      await deleteCloudinaryAsset(typedOrder.video_url, 'video');
+    }
+    if (typedOrder.qr_code_url) {
+      await deleteCloudinaryAsset(typedOrder.qr_code_url, 'image');
+    }
+
+    return NextResponse.json({ success: true, data: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

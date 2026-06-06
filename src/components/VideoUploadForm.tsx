@@ -12,7 +12,7 @@ type UploadPhase = 'signing' | 'uploading' | 'saving' | null;
 
 function phaseLabel(phase: UploadPhase, progress: number): string {
   if (phase === 'signing') return 'Preparing upload…';
-  if (phase === 'uploading') return `Uploading to Cloudinary… ${progress}%`;
+  if (phase === 'uploading') return `Uploading… ${progress}%`;
   if (phase === 'saving') return 'Saving…';
   return '';
 }
@@ -20,12 +20,18 @@ function phaseLabel(phase: UploadPhase, progress: number): string {
 export default function VideoUploadForm({ order }: { order: Order }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [phase, setPhase] = useState<UploadPhase>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(order.video_url);
+
+  // Remove video state
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
@@ -36,12 +42,10 @@ export default function VideoUploadForm({ order }: { order: Order }) {
       setError('Please select a video file.');
       return;
     }
-
     if (file.size > MAX_SIZE_BYTES) {
       setError(`File is too large. Maximum size is ${MAX_SIZE_MB} MB.`);
       return;
     }
-
     setSelectedFile(file);
   };
 
@@ -52,7 +56,7 @@ export default function VideoUploadForm({ order }: { order: Order }) {
     setProgress(0);
 
     try {
-      // ── Step 1: Get a signed upload token from our server ──────
+      // Step 1 — get signed upload token
       setPhase('signing');
       const signRes = await fetch('/api/sign-upload', { method: 'POST' });
       const signJson = await signRes.json();
@@ -64,9 +68,8 @@ export default function VideoUploadForm({ order }: { order: Order }) {
 
       const sig = signJson.data as CloudinarySignature;
 
-      // ── Step 2: Upload the video directly to Cloudinary ────────
+      // Step 2 — upload directly to Cloudinary
       setPhase('uploading');
-
       const cloudinaryForm = new FormData();
       cloudinaryForm.append('file', selectedFile);
       cloudinaryForm.append('api_key', sig.api_key);
@@ -74,20 +77,19 @@ export default function VideoUploadForm({ order }: { order: Order }) {
       cloudinaryForm.append('signature', sig.signature);
       cloudinaryForm.append('folder', sig.folder);
 
-      const cloudinaryEndpoint = `https://api.cloudinary.com/v1_1/${sig.cloud_name}/video/upload`;
-
       const secureUrl = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
         xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            setProgress(Math.round((e.loaded / e.total) * 100));
-          }
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
         });
 
         xhr.addEventListener('load', () => {
           try {
-            const res = JSON.parse(xhr.responseText) as { secure_url?: string; error?: { message: string } };
+            const res = JSON.parse(xhr.responseText) as {
+              secure_url?: string;
+              error?: { message: string };
+            };
             if (xhr.status >= 400 || res.error) {
               reject(new Error(res.error?.message ?? 'Cloudinary upload failed'));
             } else if (!res.secure_url) {
@@ -101,13 +103,12 @@ export default function VideoUploadForm({ order }: { order: Order }) {
         });
 
         xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
-        xhr.open('POST', cloudinaryEndpoint);
+        xhr.open('POST', `https://api.cloudinary.com/v1_1/${sig.cloud_name}/video/upload`);
         xhr.send(cloudinaryForm);
       });
 
-      // ── Step 3: Save the URL to our database ──────────────────
+      // Step 3 — save URL to database
       setPhase('saving');
-
       const saveRes = await fetch('/api/upload-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,6 +130,26 @@ export default function VideoUploadForm({ order }: { order: Order }) {
     } finally {
       setUploading(false);
       setPhase(null);
+    }
+  };
+
+  const handleRemoveVideo = async () => {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/video`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!json.success) {
+        setRemoveError(json.error ?? 'Failed to remove video');
+        return;
+      }
+      setUploadedUrl(null);
+      setConfirmRemove(false);
+      router.refresh();
+    } catch {
+      setRemoveError('Network error — please try again');
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -172,6 +193,7 @@ export default function VideoUploadForm({ order }: { order: Order }) {
 
       {uploadedUrl ? (
         <div className="space-y-4">
+          {/* Player */}
           <video
             src={uploadedUrl}
             controls
@@ -179,8 +201,44 @@ export default function VideoUploadForm({ order }: { order: Order }) {
             className="w-full rounded-xl bg-black"
             style={{ maxHeight: '320px' }}
           />
-          <p className="text-xs text-gray-400">Video uploaded successfully.</p>
 
+          {/* Remove video */}
+          {confirmRemove ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm text-red-800 font-medium">
+                Remove this video? This also clears the QR code and resets the order to pending.
+              </p>
+              {removeError && <p className="text-xs text-red-700">{removeError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRemoveVideo}
+                  disabled={removing}
+                  className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {removing ? 'Removing…' : 'Yes, remove'}
+                </button>
+                <button
+                  onClick={() => { setConfirmRemove(false); setRemoveError(null); }}
+                  disabled={removing}
+                  className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-400">Video uploaded successfully.</p>
+              <button
+                onClick={() => setConfirmRemove(true)}
+                className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+              >
+                Remove video
+              </button>
+            </div>
+          )}
+
+          {/* Replace */}
           <div className="border-t border-gray-100 pt-4 space-y-3">
             <p className="text-sm text-gray-600 font-medium">Replace video</p>
             <FileInput label="Choose video file" />
@@ -194,13 +252,12 @@ export default function VideoUploadForm({ order }: { order: Order }) {
             <p className="text-sm text-gray-500 mb-1">Select a video to upload</p>
             <p className="text-xs text-gray-400">MP4, MOV, WebM — up to {MAX_SIZE_MB} MB</p>
           </div>
-
           <FileInput label="Choose video file" />
           <SelectedFileRow actionLabel="Upload Video" />
         </div>
       )}
 
-      {/* Progress bar — visible during the uploading phase */}
+      {/* Upload progress */}
       {uploading && (
         <div className="mt-4">
           <div className="flex justify-between text-xs text-gray-500 mb-1.5">

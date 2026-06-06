@@ -57,3 +57,37 @@ export async function uploadQrToCloudinary(
     uploadStream.end(pngBuffer);
   });
 }
+
+/**
+ * Extracts the Cloudinary public_id from a secure URL.
+ * URL format: https://res.cloudinary.com/{cloud}/{type}/upload/v{ver}/{public_id}.{ext}
+ */
+function extractPublicId(url: string): string {
+  try {
+    const parts = url.split('/upload/');
+    if (parts.length < 2) return '';
+    const afterUpload = parts[1];
+    // Strip optional version segment (v1234567890/)
+    const withoutVersion = afterUpload.replace(/^v\d+\//, '');
+    // Strip file extension
+    return withoutVersion.replace(/\.[^/.]+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Deletes an asset from Cloudinary by URL. Best-effort: never throws.
+ */
+export async function deleteCloudinaryAsset(
+  url: string,
+  resourceType: 'video' | 'image'
+): Promise<void> {
+  const publicId = extractPublicId(url);
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+  } catch {
+    // Swallow — DB deletion already succeeded; orphaned Cloudinary asset is acceptable
+  }
+}
