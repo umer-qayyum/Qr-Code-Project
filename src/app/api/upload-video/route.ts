@@ -1,33 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServerClient } from '@/lib/supabase/server';
-import { uploadVideoToCloudinary } from '@/lib/cloudinary';
 
-const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+interface SaveVideoBody {
+  orderId: string;
+  video_url: string;
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  try {
-    const formData = await request.formData();
-    const file = formData.get('file');
-    const orderId = formData.get('orderId');
+  // Guard against non-JSON bodies (e.g. old multipart/form-data requests)
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          'Expected Content-Type: application/json. ' +
+          'Video uploads now go directly to Cloudinary — make sure you are running the latest client code.',
+      },
+      { status: 415 }
+    );
+  }
 
-    if (!orderId || typeof orderId !== 'string') {
+  let body: Partial<SaveVideoBody>;
+  try {
+    body = (await request.json()) as Partial<SaveVideoBody>;
+  } catch {
+    return NextResponse.json(
+      { success: false, error: 'Request body is not valid JSON' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    if (!body.orderId || typeof body.orderId !== 'string') {
       return NextResponse.json({ success: false, error: 'orderId is required' }, { status: 400 });
     }
 
-    if (!file || !(file instanceof Blob)) {
-      return NextResponse.json({ success: false, error: 'file is required' }, { status: 400 });
+    if (!body.video_url || typeof body.video_url !== 'string') {
+      return NextResponse.json({ success: false, error: 'video_url is required' }, { status: 400 });
     }
 
-    if (!file.type.startsWith('video/')) {
+    if (!body.video_url.startsWith('https://res.cloudinary.com/')) {
       return NextResponse.json(
-        { success: false, error: 'File must be a video' },
-        { status: 400 }
-      );
-    }
-
-    if (file.size > MAX_SIZE_BYTES) {
-      return NextResponse.json(
-        { success: false, error: 'File exceeds 100 MB limit' },
+        { success: false, error: 'Invalid video URL — must be a Cloudinary URL' },
         { status: 400 }
       );
     }
@@ -35,29 +50,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { data: order, error: orderError } = await supabaseServerClient
       .from('orders')
       .select('id')
-      .eq('id', orderId)
+      .eq('id', body.orderId)
       .single();
 
     if (orderError || !order) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const filename = file instanceof File ? file.name : 'upload.mp4';
-
-    const { secure_url } = await uploadVideoToCloudinary(buffer, filename);
-
     const { error: updateError } = await supabaseServerClient
       .from('orders')
-      .update({ video_url: secure_url, status: 'video_uploaded' })
-      .eq('id', orderId);
+      .update({ video_url: body.video_url, status: 'video_uploaded' })
+      .eq('id', body.orderId);
 
     if (updateError) {
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data: { video_url: secure_url } });
+    return NextResponse.json({ success: true, data: { video_url: body.video_url } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
